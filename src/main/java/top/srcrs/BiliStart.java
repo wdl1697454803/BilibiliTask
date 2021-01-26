@@ -9,6 +9,8 @@ import top.srcrs.util.*;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -38,7 +40,6 @@ public class BiliStart {
             log.info("【用户名】: {}",StringUtil.hideString(USER_DATA.getUname(),1,1,'*'));
             log.info("【硬币】: {}", USER_DATA.getMoney());
             log.info("【经验】: {}", USER_DATA.getCurrentExp());
-            log.info("【等级】: {}",USER_DATA.getCurrentLevel());
             /* 动态执行task包下的所有java代码 */
             scanTask();
             /* 当用户等级为Lv6时，升级到下一级 next_exp 值为 -- 代表无穷大 */
@@ -58,6 +59,10 @@ public class BiliStart {
         if(StringUtil.isNotBlank(System.getenv("SCKEY"))){
             SendServer.send(System.getenv("SCKEY"));
         }
+        // Server酱 测试号版
+        if(StringUtil.isNotBlank(System.getenv("SENDKEY"))){
+            SendServerChan.send(System.getenv("SENDKEY"));
+        }
         // PUSHPLUSTK
         if(StringUtil.isNotBlank(System.getenv("PUSHPLUSTK"))){
             SendPushPlus.send(System.getenv("PUSHPLUSTK"));
@@ -65,6 +70,11 @@ public class BiliStart {
         /* 此时数组的长度为4，就默认填写的是填写的钉钉 webHook 链接 */
         if(StringUtil.isNotBlank(System.getenv("DINGTALK"))){
             SendDingTalk.send(System.getenv("DINGTALK"));
+        }
+        /* Telegram Bot推送 */
+        if(StringUtil.isNotBlank(System.getenv("TELEGRAM_BOT_TOKEN"))
+                && StringUtil.isNotBlank(System.getenv("TELEGRAM_CHAT_ID"))){
+            SendTelegram.send(System.getenv("TELEGRAM_BOT_TOKEN"), System.getenv("TELEGRAM_CHAT_ID"));
         }
     }
 
@@ -75,12 +85,16 @@ public class BiliStart {
      * 因为部分任务是需要有顺序的去执行
      */
     private static void scanTask() {
-        List<String> classNameList = new ArrayList<>();
+        List<Class<?>> clazzList = new ArrayList<>();
         PackageScanner pack = new PackageScanner() {
             @Override
             public void dealClass(String className) {
                 try{
-                    classNameList.add(className);
+                    Class<?> clazz = Class.forName(className);
+                    // 判断类是否实现了接口Task
+                    if (Arrays.stream(clazz.getInterfaces()).parallel().anyMatch(taskI -> taskI.equals(Task.class))) {
+                        clazzList.add(clazz);
+                    }
                 } catch (Exception e){
                     log.error("💔反射获取对象错误 : ", e);
                 }
@@ -88,9 +102,9 @@ public class BiliStart {
         };
         pack.scannerPackage("top.srcrs.task");
 
-        classNameList.stream().sorted().forEach(className -> {
+        clazzList.stream().sorted(Comparator.comparing(Class::getName)).forEach(clazz -> {
             try{
-                Constructor<?> constructor = Class.forName(className).getConstructor();
+                Constructor<?> constructor = clazz.getConstructor();
                 Object object = constructor.newInstance();
                 Method method = object.getClass().getMethod("run");
                 method.invoke(object);
@@ -118,45 +132,36 @@ public class BiliStart {
      * @Time 2020-10-13
      */
     public static boolean check(){
-        /* 连续登录 80 次，有一次登录成功即停止
-         * 每次失败后等待5秒钟
-         */
-        int num = 80;
-        while(num--!=0){
-            Request.UserAgent = InitUserAgent.getOne();
-            JSONObject jsonObject = Request.get("https://api.bilibili.com/x/web-interface/nav");
-            JSONObject object = jsonObject.getJSONObject("data");
-            String code = jsonObject.getString("code");
-            if(SUCCESS.equals(code)){
-                JSONObject levelInfo = object.getJSONObject("level_info");
-                /* 用户名 */
-                USER_DATA.setUname(object.getString("uname"));
-                /* 账户的uid */
-                USER_DATA.setMid(object.getString("mid"));
-                /* vip类型 */
-                USER_DATA.setVipType(object.getString("vipType"));
-                /* 硬币数 */
-                USER_DATA.setMoney(object.getBigDecimal("money"));
-                /* 经验 */
-                USER_DATA.setCurrentExp(levelInfo.getIntValue("current_exp"));
-                /* 大会员状态 */
-                USER_DATA.setVipStatus(object.getString("vipStatus"));
-                /* 钱包B币卷余额 */
-                USER_DATA.setCouponBalance(object.getJSONObject("wallet").getIntValue("coupon_balance"));
-                /* 升级到下一级所需要的经验 */
-                USER_DATA.setNextExp(levelInfo.getString("next_exp"));
-                /* 获取当前的等级 */
-                USER_DATA.setCurrentLevel(levelInfo.getString("current_level"));
-                log.info("【尝试登录次数】: {}",80-num);
-                return true;
-            }
-            if(NOT_LOGGED_IN.equals(code)){
-                log.info("💔账户已失效，请在Secrets重新绑定你的信息");
-                return false;
-            }
-            Request.waitFor();
+        Request.UserAgent = InitUserAgent.getOne();
+        JSONObject jsonObject = Request.get("https://api.bilibili.com/x/web-interface/nav");
+        JSONObject object = jsonObject.getJSONObject("data");
+        String code = jsonObject.getString("code");
+        if(SUCCESS.equals(code)){
+            JSONObject levelInfo = object.getJSONObject("level_info");
+            /* 用户名 */
+            USER_DATA.setUname(object.getString("uname"));
+            /* 账户的uid */
+            USER_DATA.setMid(object.getString("mid"));
+            /* vip类型 */
+            USER_DATA.setVipType(object.getString("vipType"));
+            /* 硬币数 */
+            USER_DATA.setMoney(object.getBigDecimal("money"));
+            /* 经验 */
+            USER_DATA.setCurrentExp(levelInfo.getIntValue("current_exp"));
+            /* 大会员状态 */
+            USER_DATA.setVipStatus(object.getString("vipStatus"));
+            /* 钱包B币卷余额 */
+            USER_DATA.setCouponBalance(object.getJSONObject("wallet").getIntValue("coupon_balance"));
+            /* 升级到下一级所需要的经验 */
+            USER_DATA.setNextExp(levelInfo.getString("next_exp"));
+            /* 获取当前的等级 */
+            USER_DATA.setCurrentLevel(levelInfo.getString("current_level"));
+            return true;
         }
-        log.info("💔80次尝试登录全部失败");
+        if(NOT_LOGGED_IN.equals(code)){
+            log.info("💔账户已失效，请在Secrets重新绑定你的信息");
+            return false;
+        }
         return false;
     }
 

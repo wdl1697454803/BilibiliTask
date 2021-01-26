@@ -41,8 +41,7 @@ public class ThrowCoinTask implements Task {
             num3 = Math.max(num3,0);
             /* 实际需要投 num个硬币 */
             int num = Math.min(num3,Math.min(num1,num2));
-            log.info("【投币计算】: 当前硬币数: " + num2
-                    + " ,自定义投币数: " + num3
+            log.info("【投币计算】: 自定义投币数: " + num3
                     + " ,今日已投币: " + reward/10
                     + " ,还需投币: "+num1
                     + " ,实际投币: "+num);
@@ -76,11 +75,12 @@ public class ThrowCoinTask implements Task {
                 videoAid.addAll(getRegions("6", "1",num - videoAid.size()));
                 log.info("【分区热门视频】: 成功获取到: {} 个视频", videoAid.size());
             }
-            /* 给每个视频投 1 个币,点 1 个赞 */
+            /* 给每个视频投 1 个币 */
+            /* 在配置文件中读取是否为投币视频点赞 */
             for (int i = 0; i < num; i++) {
                 /* 视频的aid */
                 String aid = videoAid.get(i);
-                JSONObject json = throwCoin(aid, "1", "1");
+                JSONObject json = throwCoin(aid, "1", config.getSelectLike());
                 /* 输出的日志消息 */
                 String msg ;
                 if ("0".equals(json.getString("code"))) {
@@ -172,10 +172,14 @@ public class ThrowCoinTask implements Task {
         String key = "code";
         if(success.equals(dynamic.getString(key))){
             JSONArray cards = dynamic.getJSONObject("data").getJSONArray("cards");
+            // 没有任何动态，则不会有 cards 数组
+            if(cards==null){
+                return new ArrayList<>();
+            }
             for(Object object : cards){
                 JSONObject card = (JSONObject) object;
                 String aid = card.getJSONObject("desc").getString("rid");
-                String mid = card.getJSONObject("desc").getString("rid");
+                String mid = card.getJSONObject("desc").getString("uid");
                 if (isThrowCoins(aid, mid)) {
                     videoAid.add(aid);
                 }
